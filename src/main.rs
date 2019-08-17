@@ -84,6 +84,83 @@ enum Term {
     Application(Box<Term>, Box<Term>),
 }
 
+fn term_p_<I>() -> impl Parser<Input = I, Output = Term>
+where
+    I: Stream<Item = char>,
+    I::Error: ParseError<I::Item, I::Range, I::Position>,
+{
+    let variable = variable_p().map(Term::Variable);
+
+    let boolean = (qualifiers_p().skip(spaces()), booleans_p()).map(|(q, b)| Term::Boolean(q, b));
+
+    let if_ = (
+        string("if").skip(spaces()),
+        term_p().skip(spaces()),
+        string("then").skip(spaces()),
+        term_p().skip(spaces()),
+        string("else").skip(spaces()),
+        term_p(),
+    )
+        .map(|t| Term::If(Box::new(t.1), Box::new(t.3), Box::new(t.5)));
+
+    let pair = (
+        qualifiers_p().skip(spaces()),
+        char('<').skip(spaces()),
+        term_p().skip(spaces()),
+        char(',').skip(spaces()),
+        term_p().skip(spaces()),
+        char('>'),
+    )
+        .map(|t| Term::Pair(t.0, Box::new(t.2), Box::new(t.4)));
+
+    let split = (
+        string("split").skip(spaces()),
+        term_p().skip(spaces()),
+        string("as").skip(spaces()),
+        variable_p().skip(spaces()),
+        char(',').skip(spaces()),
+        variable_p().skip(spaces()),
+        string("in").skip(spaces()),
+        term_p(),
+    )
+        .map(|t| Term::Split(Box::new(t.1), t.3, t.5, Box::new(t.7)));
+
+    let abstraction = (
+        qualifiers_p().skip(spaces()),
+        char('\\').skip(spaces()),
+        variable_p().skip(spaces()),
+        char(':').skip(spaces()),
+        type_p().skip(spaces()),
+        char('.').skip(spaces()),
+        term_p(),
+    )
+        .map(|t| Term::Abstraction(t.0, t.2, t.4, Box::new(t.6)));
+
+    // let application = (
+    //     term_p().skip(spaces()),
+    //     term_p(),
+    // ).map(|(p1, p2)| Term::Application(Box::new(p1), Box::new(p2)));
+
+    let paren = char('(').with(term_p()).skip(char(')'));
+
+    paren
+        .or(if_)
+        .or(split)
+        .or(attempt(boolean))
+        .or(attempt(pair))
+        .or(attempt(abstraction))
+        .or(attempt(variable))
+    // .or(application) // FIXME
+}
+
+parser! {
+    fn term_p[I]()(I) -> Term
+    where [I: Stream<Item = char>]
+    {
+        term_p_()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PreType {
     Bool,
@@ -257,5 +334,47 @@ mod tests {
             )),
         );
         assert!(v.parse("Fool").is_err());
+    }
+
+    #[test]
+    fn test_term_p() {
+        let mut t = term_p();
+        // assert_eq!(t.parse("x"), Ok((Term::Variable(Variable("x".to_owned())), "")));
+        assert_eq!(
+            t.parse(r"lin \t: un (un Bool * un Bool).split t as x, y in if x then lin <x, y> else lin <y, x>"),
+            Ok((
+                Term::Abstraction(
+                    Qualifier::Lin,
+                    Variable("t".to_owned()),
+                    Type(
+                        Qualifier::Un,
+                        PreType::Pair(
+                            Box::new(Type(Qualifier::Un, PreType::Bool)),
+                            Box::new(Type(Qualifier::Un, PreType::Bool)),
+                        )
+                    ),
+                    Box::new(Term::Split(
+                        Box::new(Term::Variable(Variable("t".to_owned()))),
+                        Variable("x".to_owned()),
+                        Variable("y".to_owned()),
+                        Box::new(Term::If(
+                            Box::new(Term::Variable(Variable("x".to_owned()))),
+                            Box::new(Term::Pair(
+                                Qualifier::Lin,
+                                Box::new(Term::Variable(Variable("x".to_owned()))),
+                                Box::new(Term::Variable(Variable("y".to_owned()))),
+                            )),
+                            Box::new(Term::Pair(
+                                Qualifier::Lin,
+                                Box::new(Term::Variable(Variable("y".to_owned()))),
+                                Box::new(Term::Variable(Variable("x".to_owned()))),
+                            )),
+                        )),
+                    )),
+                ),
+                "",
+            ))
+        );
+        assert!(t.parse("if").is_err());
     }
 }
