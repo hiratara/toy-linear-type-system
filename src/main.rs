@@ -1,11 +1,10 @@
 #[macro_use]
 extern crate combine;
 
-use crate::combine::error::StreamError;
 use combine::char::{char, digit, space, spaces, string};
-use combine::error::{ParseError, UnexpectedParse};
+use combine::error::{ParseError};
 use combine::stream::state::State;
-use combine::{attempt, many1, optional, satisfy, token, value, Parser, Stream, StreamOnce};
+use combine::{attempt, many1, optional, satisfy, token, unexpected_any, value, Parser, Stream, StreamOnce};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Qualifier {
@@ -72,23 +71,17 @@ static RESERVED: &'static [&'static str] = &[
     "Bool",
 ];
 
-type AndThenError<I> = <<I as StreamOnce>::Error as ParseError<
-    <I as StreamOnce>::Item,
-    <I as StreamOnce>::Range,
-    <I as StreamOnce>::Position,
->>::StreamError;
-
 fn variable_p_<I>() -> impl Parser<Input = I, Output = Variable>
 where
     I: Stream<Item = char>,
     I::Error: ParseError<I::Item, I::Range, I::Position>,
 {
     many1::<String, _>(satisfy(|c: char| c.is_ascii_lowercase()))
-        .and_then(|var| {
+        .then(|var| {
             if RESERVED.iter().any(|&r| r == var) {
-                Err(AndThenError::<I>::message_static_message("error!!!"))
+                unexpected_any("variable").left()
             } else {
-                Ok(Variable(var))
+                value(Variable(var)).right()
             }
         })
 }
