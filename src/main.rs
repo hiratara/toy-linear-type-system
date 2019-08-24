@@ -2,9 +2,9 @@
 extern crate combine;
 
 use combine::char::{char, digit, space, spaces, string};
-use combine::error::{ParseError};
+use combine::error::ParseError;
 use combine::stream::state::State;
-use combine::{attempt, many1, optional, satisfy, token, unexpected_any, value, Parser, Stream, StreamOnce};
+use combine::{attempt, many1, optional, satisfy, token, unexpected_any, value, Parser, Stream};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Qualifier {
@@ -58,17 +58,7 @@ parser! {
 struct Variable(String);
 
 static RESERVED: &'static [&'static str] = &[
-    "lin",
-    "un",
-    "true",
-    "false",
-    "if",
-    "then",
-    "else",
-    "split",
-    "as",
-    "in",
-    "Bool",
+    "lin", "un", "true", "false", "if", "then", "else", "split", "as", "in", "Bool",
 ];
 
 fn variable_p_<I>() -> impl Parser<Input = I, Output = Variable>
@@ -76,14 +66,13 @@ where
     I: Stream<Item = char>,
     I::Error: ParseError<I::Item, I::Range, I::Position>,
 {
-    many1::<String, _>(satisfy(|c: char| c.is_ascii_lowercase()))
-        .then(|var| {
-            if RESERVED.iter().any(|&r| r == var) {
-                unexpected_any("variable").left()
-            } else {
-                value(Variable(var)).right()
-            }
-        })
+    many1::<String, _>(satisfy(|c: char| c.is_ascii_lowercase())).then(|var| {
+        if RESERVED.iter().any(|&r| r == var) {
+            unexpected_any("variable").left()
+        } else {
+            value(Variable(var)).right()
+        }
+    })
 }
 
 parser! {
@@ -166,14 +155,11 @@ where
         .or(attempt(pair))
         .or(attempt(abstraction))
         .or(attempt(variable));
-    
-    (term, term_tail_p())
-        .map(|t| {
-            match t.1 {
-                Some(t2) => Term::Application(Box::new(t.0), Box::new(t2)),
-                None => t.0,
-            }
-        })
+
+    (term, term_tail_p()).map(|t| match t.1 {
+        Some(t2) => Term::Application(Box::new(t.0), Box::new(t2)),
+        None => t.0,
+    })
 }
 
 parser! {
@@ -189,21 +175,14 @@ where
     I: Stream<Item = char>,
     I::Error: ParseError<I::Item, I::Range, I::Position>,
 {
-    let application_tail = (
-        space().skip(spaces()),
-        term_p(),
-        term_tail_p(),
-    ).map(|t| {
-        match t.2 {
-            Some(t2) => Term::Application(Box::new(t.1), Box::new(t2)),
-            None => t.1,
-        }
+    let application_tail = (space().skip(spaces()), term_p(), term_tail_p()).map(|t| match t.2 {
+        Some(t2) => Term::Application(Box::new(t.1), Box::new(t2)),
+        None => t.1,
     });
     attempt(application_tail.map(Some)).or(value(None))
 
     // value(None)
 }
-
 
 parser! {
     fn term_tail_p[I]()(I) -> Option<Term>
@@ -392,14 +371,20 @@ mod tests {
     #[test]
     fn test_term_p() {
         let mut t = term_p();
-        assert_eq!(t.parse("x"), Ok((Term::Variable(Variable("x".to_owned())), "")));
-        assert_eq!(t.parse(r"x y"), Ok((
-            Term::Application(
-                Box::new(Term::Variable(Variable("x".to_owned()))),
-                Box::new(Term::Variable(Variable("y".to_owned()))),
-            ),
-            "",
-        )));
+        assert_eq!(
+            t.parse("x"),
+            Ok((Term::Variable(Variable("x".to_owned())), ""))
+        );
+        assert_eq!(
+            t.parse(r"x y"),
+            Ok((
+                Term::Application(
+                    Box::new(Term::Variable(Variable("x".to_owned()))),
+                    Box::new(Term::Variable(Variable("y".to_owned()))),
+                ),
+                "",
+            ))
+        );
         // assert_eq!(t.parse(r"un \t: un Bool.t"), Ok((Term::Variable(Variable("4".to_owned())), "")));
         // assert_eq!(t.parse("un <un true, un true>"), Ok((Term::Variable(Variable("5".to_owned())), "")));
         // assert_eq!(t.parse("if (un true) then (un true) else (un true)"), Ok((Term::Variable(Variable("6".to_owned())), "")));
