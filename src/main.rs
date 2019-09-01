@@ -4,7 +4,23 @@ extern crate combine;
 use combine::char::{char, digit, space, spaces, string};
 use combine::error::ParseError;
 use combine::stream::state::State;
-use combine::{attempt, many1, optional, satisfy, token, unexpected_any, value, Parser, Stream};
+use combine::{attempt, many1, optional, satisfy, skip_many1, token, unexpected_any, value, Parser, Stream};
+
+fn spaces1_<I>() -> impl Parser<Input = I, Output = ()>
+where
+    I: Stream<Item = char>,
+    I::Error: ParseError<I::Item, I::Range, I::Position>,
+{
+    skip_many1(space())
+}
+
+parser! {
+    fn spaces1[I]()(I) -> ()
+    where [I: Stream<Item = char>]
+    {
+        spaces1_()
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Qualifier {
@@ -110,11 +126,11 @@ where
     let boolean_tail = booleans_p();
 
     let if_ = (
-        string("if").skip(spaces()),
-        term_p().skip(spaces()),
-        string("then").skip(spaces()),
-        term_p().skip(spaces()),
-        string("else").skip(spaces()),
+        string("if").skip(spaces1()),
+        term_p().skip(spaces1()),
+        string("then").skip(spaces1()),
+        term_p().skip(spaces1()),
+        string("else").skip(spaces1()),
         term_p(),
     )
         .map(|t| Term::If(Box::new(t.1), Box::new(t.3), Box::new(t.5)));
@@ -128,13 +144,13 @@ where
     );
 
     let split = (
-        string("split").skip(spaces()),
-        term_p().skip(spaces()),
-        string("as").skip(spaces()),
+        string("split").skip(spaces1()),
+        term_p().skip(spaces1()),
+        string("as").skip(spaces1()),
         variable_p().skip(spaces()),
         char(',').skip(spaces()),
-        variable_p().skip(spaces()),
-        string("in").skip(spaces()),
+        variable_p().skip(spaces1()),
+        string("in").skip(spaces1()),
         term_p(),
     )
         .map(|t| Term::Split(Box::new(t.1), t.3, t.5, Box::new(t.7)));
@@ -148,9 +164,9 @@ where
         term_p(),
     );
 
-    let paren = char('(').with(term_p()).skip(char(')'));
+    let paren = char('(').skip(spaces()).with(term_p()).skip(spaces()).skip(char(')'));
 
-    let boolean_or_pair_or_abstraction = qualifiers_p().skip(spaces()).and(
+    let boolean_or_pair_or_abstraction = qualifiers_p().skip(spaces1()).and(
         boolean_tail.map(Sum3::A)
             .or(pair_tail.map(Sum3::B))
             .or(abstraction_tail.map(Sum3::C))
@@ -185,9 +201,9 @@ where
     I: Stream<Item = char>,
     I::Error: ParseError<I::Item, I::Range, I::Position>,
 {
-    let application_tail = (space().skip(spaces()), term_p(), term_tail_p()).map(|t| match t.2 {
-        Some(t2) => Term::Application(Box::new(t.1), Box::new(t2)),
-        None => t.1,
+    let application_tail = spaces1().with((term_p(), term_tail_p())).map(|t| match t.1 {
+        Some(t2) => Term::Application(Box::new(t.0), Box::new(t2)),
+        None => t.0,
     });
     attempt(application_tail.map(Some)).or(value(None))
 }
@@ -255,7 +271,7 @@ where
     I: Stream<Item = char>,
     I::Error: ParseError<I::Item, I::Range, I::Position>,
 {
-    (qualifiers_p(), spaces(), pre_type_p()).map(|t| Type(t.0, t.2))
+    (qualifiers_p(), spaces1(), pre_type_p()).map(|t| Type(t.0, t.2))
 }
 
 parser! {
