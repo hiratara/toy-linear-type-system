@@ -4,7 +4,9 @@ extern crate combine;
 use combine::char::{char, digit, space, spaces, string};
 use combine::error::ParseError;
 use combine::stream::state::State;
-use combine::{attempt, many1, optional, satisfy, skip_many1, token, unexpected_any, value, Parser, Stream};
+use combine::{
+    attempt, many1, optional, satisfy, skip_many1, token, unexpected_any, value, Parser, Stream,
+};
 
 fn spaces1_<I>() -> impl Parser<Input = I, Output = ()>
 where
@@ -164,17 +166,25 @@ where
         term_p(),
     );
 
-    let paren = char('(').skip(spaces()).with(term_p()).skip(spaces()).skip(char(')'));
+    let paren = char('(')
+        .skip(spaces())
+        .with(term_p())
+        .skip(spaces())
+        .skip(char(')'));
 
-    let boolean_or_pair_or_abstraction = qualifiers_p().skip(spaces1()).and(
-        boolean_tail.map(Sum3::A)
-            .or(pair_tail.map(Sum3::B))
-            .or(abstraction_tail.map(Sum3::C))
-    ).map(|(q, t)| match t {
-        Sum3::A(b) => Term::Boolean(q, b),
-        Sum3::B(t) => Term::Pair(q, Box::new(t.1), Box::new(t.3)),
-        Sum3::C(t) => Term::Abstraction(q, t.1, t.3, Box::new(t.5)),
-    });
+    let boolean_or_pair_or_abstraction = qualifiers_p()
+        .skip(spaces1())
+        .and(
+            boolean_tail
+                .map(Sum3::A)
+                .or(pair_tail.map(Sum3::B))
+                .or(abstraction_tail.map(Sum3::C)),
+        )
+        .map(|(q, t)| match t {
+            Sum3::A(b) => Term::Boolean(q, b),
+            Sum3::B(t) => Term::Pair(q, Box::new(t.1), Box::new(t.3)),
+            Sum3::C(t) => Term::Abstraction(q, t.1, t.3, Box::new(t.5)),
+        });
 
     let term = paren
         .or(attempt(variable))
@@ -201,10 +211,12 @@ where
     I: Stream<Item = char>,
     I::Error: ParseError<I::Item, I::Range, I::Position>,
 {
-    let application_tail = spaces1().with((term_p(), term_tail_p())).map(|t| match t.1 {
-        Some(t2) => Term::Application(Box::new(t.0), Box::new(t2)),
-        None => t.0,
-    });
+    let application_tail = spaces1()
+        .with((term_p(), term_tail_p()))
+        .map(|t| match t.1 {
+            Some(t2) => Term::Application(Box::new(t.0), Box::new(t2)),
+            None => t.0,
+        });
     attempt(application_tail.map(Some)).or(value(None))
 }
 
