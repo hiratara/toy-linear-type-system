@@ -99,9 +99,15 @@ where
     I: Stream<Item = char>,
     I::Error: ParseError<I::Item, I::Range, I::Position>,
 {
+    enum Sum3<S, T, U> {
+        A(S),
+        B(T),
+        C(U),
+    }
+
     let variable = variable_p().map(Term::Variable);
 
-    let boolean = (qualifiers_p().skip(spaces()), booleans_p()).map(|(q, b)| Term::Boolean(q, b));
+    let boolean_tail = booleans_p();
 
     let if_ = (
         string("if").skip(spaces()),
@@ -113,15 +119,13 @@ where
     )
         .map(|t| Term::If(Box::new(t.1), Box::new(t.3), Box::new(t.5)));
 
-    let pair = (
-        qualifiers_p().skip(spaces()),
+    let pair_tail = (
         char('<').skip(spaces()),
         term_p().skip(spaces()),
         char(',').skip(spaces()),
         term_p().skip(spaces()),
         char('>'),
-    )
-        .map(|t| Term::Pair(t.0, Box::new(t.2), Box::new(t.4)));
+    );
 
     let split = (
         string("split").skip(spaces()),
@@ -135,26 +139,32 @@ where
     )
         .map(|t| Term::Split(Box::new(t.1), t.3, t.5, Box::new(t.7)));
 
-    let abstraction = (
-        qualifiers_p().skip(spaces()),
+    let abstraction_tail = (
         char('\\').skip(spaces()),
         variable_p().skip(spaces()),
         char(':').skip(spaces()),
         type_p().skip(spaces()),
         char('.').skip(spaces()),
         term_p(),
-    )
-        .map(|t| Term::Abstraction(t.0, t.2, t.4, Box::new(t.6)));
+    );
 
     let paren = char('(').with(term_p()).skip(char(')'));
 
+    let boolean_or_pair_or_abstraction = qualifiers_p().skip(spaces()).and(
+        boolean_tail.map(Sum3::A)
+            .or(pair_tail.map(Sum3::B))
+            .or(abstraction_tail.map(Sum3::C))
+    ).map(|(q, t)| match t {
+        Sum3::A(b) => Term::Boolean(q, b),
+        Sum3::B(t) => Term::Pair(q, Box::new(t.1), Box::new(t.3)),
+        Sum3::C(t) => Term::Abstraction(q, t.1, t.3, Box::new(t.5)),
+    });
+
     let term = paren
         .or(attempt(variable))
-        .or(attempt(boolean))
+        .or(boolean_or_pair_or_abstraction)
         .or(if_)
-        .or(attempt(pair))
-        .or(split)
-        .or(abstraction);
+        .or(split);
 
     (term, term_tail_p()).map(|t| match t.1 {
         Some(t2) => Term::Application(Box::new(t.0), Box::new(t2)),
