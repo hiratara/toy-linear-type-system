@@ -149,12 +149,12 @@ where
     let paren = char('(').with(term_p()).skip(char(')'));
 
     let term = paren
-        .or(if_)
-        .or(split)
+        .or(attempt(variable))
         .or(attempt(boolean))
+        .or(if_)
         .or(attempt(pair))
-        .or(attempt(abstraction))
-        .or(attempt(variable));
+        .or(split)
+        .or(abstraction);
 
     (term, term_tail_p()).map(|t| match t.1 {
         Some(t2) => Term::Application(Box::new(t.0), Box::new(t2)),
@@ -180,8 +180,6 @@ where
         None => t.1,
     });
     attempt(application_tail.map(Some)).or(value(None))
-
-    // value(None)
 }
 
 parser! {
